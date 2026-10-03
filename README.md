@@ -30,6 +30,12 @@ npm run build
 npm run preview
 ```
 
+## Deploy to GitHub Pages
+
+The included GitHub Actions workflow builds the Vite frontend and deploys `dist` whenever you push to `main`. In the repository that should host the app, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**. The app uses relative asset paths, so it works under a repository URL such as `https://mishraaryan.github.io/expicare/`.
+
+GitHub Pages hosts only the frontend; the optional Express/MongoDB API still needs a separate server host before the UI can use it. The current demo continues to save data in browser storage.
+
 ## Included features
 
 - Branded opening splash screen and in-app logo
