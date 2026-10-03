@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 const productSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 70 },
   brand: { type: String, trim: true, maxlength: 50, default: '' },
+  barcode: { type: String, trim: true, maxlength: 32, default: '' },
   category: { type: String, required: true, trim: true, maxlength: 40 },
   quantity: { type: String, trim: true, maxlength: 40, default: '' },
   location: { type: String, trim: true, maxlength: 60, default: '' },

@@ -36,6 +36,7 @@ npm run preview
 - Dashboard summary, expiry overview, and upcoming products
 - Add, search, filter, sort, view, edit, and delete products
 - OCR scan from a package photo to suggest the product name and expiry date; review and correct both before saving
+- Separate live scanner: supported browsers read product barcodes and look up catalogue details through Open Food Facts; OCR reads the expiry label
 - Categories, reminder preferences, photo upload, quantity, and storage location
 - Recycle bin with restore and empty actions
 - Light/dark mode and responsive mobile navigation
@@ -46,5 +47,6 @@ npm run preview
 - Browser storage reads are guarded so malformed saved JSON falls back to sample data.
 - Product names and dates are validated before saving; text fields have length limits and uploaded photos are capped at 2 MB.
 - OCR uses Tesseract.js in the browser. The image is processed locally; the first scan needs internet access to fetch the OCR language data. OCR guesses should be checked against the package before saving.
+- Barcode lookup needs internet and a browser with camera and `BarcodeDetector` support. Product name, brand, category, and quantity depend on catalogue coverage; expiry dates are read separately from the package label or entered manually. The barcode number is sent to Open Food Facts; label photos stay in the browser.
 - API updates allow-list editable fields, validate Mongoose updates, return 404s for missing records, and use soft deletes until permanent removal.
 - This project is a local demo starter, not a production account system. The Express API has no authentication or per-user data isolation yet; add those before exposing it publicly.

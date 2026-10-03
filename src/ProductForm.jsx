@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { createWorker } from 'tesseract.js';
 import { AlertTriangle, Bell, Camera, Check, LoaderCircle, ScanText, X } from 'lucide-react';
-import { extractProductDetails } from './ocr.js';
+import { scanProductImage } from './ocr.js';
 
 export default function ProductForm({ product, close, save }) {
   const [form, setForm] = useState(() => product ? { ...product } : {
-    name: '', brand: '', category: 'Produce', quantity: '', location: '',
+    name: '', brand: '', barcode: '', category: 'Produce', quantity: '', location: '',
     expiry: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10),
     added: new Date().toISOString().slice(0, 10), emoji: '🥑', reminder: true, photo: ''
   });
@@ -18,31 +17,20 @@ export default function ProductForm({ product, close, save }) {
 
   const scanLabel = async () => {
     if (!form.photo || scanning) return;
-    let worker;
     setError(''); setScanning(true); setProgress(0); setScanStage('Loading OCR…');
     try {
-      worker = await createWorker('eng', 1, {
-        logger: message => {
-          if (message.status === 'loading language traineddata') setScanStage('Loading English text data…');
-          if (message.status === 'recognizing text') {
-            setScanStage('Reading package text…');
-            setProgress(Math.round((message.progress || 0) * 100));
-          }
-        }
+      const found = await scanProductImage(form.photo, message => {
+        if (message.status === 'loading language traineddata') setScanStage('Loading English text data…');
+        if (message.status === 'recognizing text') { setScanStage('Reading package text…'); setProgress(Math.round((message.progress || 0) * 100)); }
       });
-      const { data: { text } } = await worker.recognize(form.photo);
-      const found = extractProductDetails(text);
-      setScanText(text.trim());
+      setScanText(found.text);
       setForm(current => ({ ...current, ...(found.name ? { name: found.name } : {}), ...(found.expiry ? { expiry: found.expiry } : {}) }));
       if (!found.name && !found.expiry) setError('Text mila, par naam ya expiry date pehchan nahi paaya. Details manually bhar dein.');
       else if (!found.expiry) setError('Naam scan ho gaya; expiry date nahi mili. Date check karke manually bharein.');
       else if (!found.name) setError('Expiry scan ho gayi; product name nahi mila. Naam manually bharein.');
     } catch {
       setError('Scan nahi ho saka. Internet check karein, phir dobara try karein ya details manually bharein.');
-    } finally {
-      if (worker) await worker.terminate().catch(() => {});
-      setScanning(false); setScanStage('');
-    }
+    } finally { setScanning(false); setScanStage(''); }
   };
 
   const submit = event => {

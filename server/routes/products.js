@@ -24,7 +24,7 @@ router.post('/', asyncRoute(async (req, res) => {
 }));
 
 router.patch('/:id', asyncRoute(async (req, res) => {
-  const allowed = ['name', 'brand', 'category', 'quantity', 'location', 'expiry', 'reminder', 'photo', 'emoji'];
+  const allowed = ['name', 'brand', 'barcode', 'category', 'quantity', 'location', 'expiry', 'reminder', 'photo', 'emoji'];
   const changes = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
   const product = await Product.findOneAndUpdate({ _id: req.params.id, deletedAt: null }, changes, { new: true, runValidators: true });
   if (!product) return res.status(404).json({ error: 'Product not found' });

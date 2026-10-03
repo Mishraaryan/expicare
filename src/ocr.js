@@ -1,3 +1,5 @@
+import { createWorker } from 'tesseract.js';
+
 const MONTHS = {
   jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
   apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
@@ -44,4 +46,15 @@ export function extractProductDetails(rawText) {
 
   const name = lines.find(line => /[A-Za-z]/.test(line) && line.length >= 3 && line.length <= 70 && !/\b(exp|expiry|expiration|best before|use by|mfg|manufactur|packed on|batch|lot|ingredients|nutrition|net wt|mrp|barcode)\b/i.test(line) && !expiryFromLine(line)) || '';
   return { name, expiry: expiry || '' };
+}
+
+export async function scanProductImage(image, onProgress = () => {}) {
+  let worker;
+  try {
+    worker = await createWorker('eng', 1, { logger: onProgress });
+    const { data: { text } } = await worker.recognize(image);
+    return { text: text.trim(), ...extractProductDetails(text) };
+  } finally {
+    if (worker) await worker.terminate().catch(() => {});
+  }
 }
