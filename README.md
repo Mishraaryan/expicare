@@ -35,6 +35,7 @@ npm run preview
 - Branded opening splash screen and in-app logo
 - Dashboard summary, expiry overview, and upcoming products
 - Add, search, filter, sort, view, edit, and delete products
+- OCR scan from a package photo to suggest the product name and expiry date; review and correct both before saving
 - Categories, reminder preferences, photo upload, quantity, and storage location
 - Recycle bin with restore and empty actions
 - Light/dark mode and responsive mobile navigation
@@ -44,5 +45,6 @@ npm run preview
 
 - Browser storage reads are guarded so malformed saved JSON falls back to sample data.
 - Product names and dates are validated before saving; text fields have length limits and uploaded photos are capped at 2 MB.
+- OCR uses Tesseract.js in the browser. The image is processed locally; the first scan needs internet access to fetch the OCR language data. OCR guesses should be checked against the package before saving.
 - API updates allow-list editable fields, validate Mongoose updates, return 404s for missing records, and use soft deletes until permanent removal.
 - This project is a local demo starter, not a production account system. The Express API has no authentication or per-user data isolation yet; add those before exposing it publicly.
