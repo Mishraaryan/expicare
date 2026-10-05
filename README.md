@@ -1,6 +1,6 @@
 # ExpiCare
 
-Smart Expiry Management System — MCA minor-project web app with a responsive React interface, local demo data, and an Express/Mongoose API starter.
+Smart Expiry Management System — MCA minor-project web app with a responsive React interface, empty-by-default inventory, and an Express/Mongoose API starter.
 
 ## Run the frontend
 
@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite (usually `http://localhost:5173`). The app works without MongoDB: sample products and changes are saved in the browser's local storage.
+Open the local URL printed by Vite (usually `http://localhost:5173`). The app works without MongoDB: your products and changes are saved in the browser's local storage. The inventory starts empty.
 
 ## Start the optional API
 
