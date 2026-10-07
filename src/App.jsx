@@ -17,12 +17,15 @@ function App(){
  const {language,setLanguage,t}=useTranslation();
  const [items,setItems]=useState(()=>withoutDemoProducts(safeRead('expicare.products',[])));
  const [bin,setBin]=useState(()=>withoutDemoProducts(safeRead('expicare.bin',[])));
+ const [profile,setProfile]=useState(()=>{const value=safeRead('expicare.profile',{});return {name:typeof value?.name==='string'?value.name:'ExpiCare',note:typeof value?.note==='string'?value.note:''}});
  const [theme,setTheme]=useState(()=>localStorage.getItem('expicare.theme')||'light');
- const [page,setPage]=useState('Dashboard'),[query,setQuery]=useState(''),[category,setCategory]=useState('All items'),[sort,setSort]=useState('expiry'),[modal,setModal]=useState(null),[selected,setSelected]=useState(null),[toast,setToast]=useState(''),[mobile,setMobile]=useState(false),[loading,setLoading]=useState(true);
+ const [page,setPage]=useState('Dashboard'),[query,setQuery]=useState(''),[category,setCategory]=useState('All items'),[sort,setSort]=useState('expiry'),[modal,setModal]=useState(null),[profileEditor,setProfileEditor]=useState(false),[selected,setSelected]=useState(null),[toast,setToast]=useState(''),[mobile,setMobile]=useState(false),[loading,setLoading]=useState(true);
  useEffect(()=>{if(!persist('expicare.products',items))notify(t('Browser storage is full. Remove a photo or product to save changes.'))},[items]);
  useEffect(()=>{if(!persist('expicare.bin',bin))notify(t('Browser storage is full. Empty the recycle bin to save changes.'))},[bin]);
+ useEffect(()=>{if(!persist('expicare.profile',profile))notify(t('Browser storage is full. Profile changes could not be saved.'))},[profile]);
  useEffect(()=>{try{localStorage.setItem('expicare.theme',theme)}catch{}document.documentElement.dataset.theme=theme},[theme]);
  useEffect(()=>{const timer=setTimeout(()=>setLoading(false),1200);return()=>clearTimeout(timer)},[]);
+ useEffect(()=>{if(!mobile)return;const previous=document.body.style.overflow;const closeOnEscape=event=>{if(event.key==='Escape')setMobile(false)};document.body.style.overflow='hidden';window.addEventListener('keydown',closeOnEscape);return()=>{document.body.style.overflow=previous;window.removeEventListener('keydown',closeOnEscape)}},[mobile]);
  const soon=useMemo(()=>items.filter(p=>p.reminder&&getDays(p.expiry)<=3),[items]);
  const upcoming=items.filter(p=>getDays(p.expiry)>=0&&getDays(p.expiry)<=7).sort((a,b)=>a.expiry.localeCompare(b.expiry));
  const notify=m=>{setToast(m);setTimeout(()=>setToast(''),2400)};
@@ -31,26 +34,29 @@ function App(){
  const remove=p=>{setBin(b=>[{...p,deletedAt:new Date().toISOString()},...b]);setItems(a=>a.filter(x=>x.id!==p.id));setSelected(null);notify(t('Moved to recycle bin'))};
  const restore=p=>{setItems(a=>[p,...a]);setBin(b=>b.filter(x=>x.id!==p.id));notify(t('Product restored'))};
  const save=p=>{if(modal?.id){setItems(a=>a.map(x=>x.id===p.id?p:x));setSelected(p);notify(t('Changes saved'))}else{setItems(a=>[p,...a]);notify(t('Product added'))}setModal(null)};
+ const openProfile=()=>{setMobile(false);setProfileEditor(true)};
+ const saveProfile=next=>{setProfile(next);setProfileEditor(false);notify(t('Profile saved'))};
+ const profileInitial=Array.from(profile.name.trim())[0]?.toLocaleUpperCase()||'E';
  if(loading)return <div className="splash"><img src={logo} alt="ExpiCare — Smart Expiry Management System"/><div className="loader-track"><i/></div><span>{t('Taking care of the little things...')}</span></div>;
  return <div className="shell">
   <aside className={`sidebar ${mobile?'open':''}`}>
    <div className="side-brand"><img src={logo} alt="ExpiCare — Smart Expiry Management System"/><button className="icon mobile-close" onClick={()=>setMobile(false)} aria-label={t('Close navigation')}><X/></button></div>
-   <div className="workspace"><div className="avatar">E</div><div><b>{t('My home')}</b><small>{t('Personal space')}</small></div><ChevronDown size={16}/></div>
+   <div className="workspace"><div className="avatar">{profileInitial}</div><div><b>{t('My home')}</b><small>{t('Personal space')}</small></div><ChevronDown size={16}/></div>
    <div className="nav-caption">{t('WORKSPACE')}</div>
    <nav>{nav.map((n,i)=>{const I=[LayoutDashboard,ScanLine,Package,Grid2X2,Bell,Archive][i];return <button key={n} className={`nav-link ${page===n&&!selected?'active':''}`} onClick={()=>go(n)}><I size={18}/><span>{t(n)}</span>{n==='Reminders'&&soon.length>0&&<i className="nav-badge">{soon.length}</i>}</button>})}</nav>
    <div className="sidebar-note"><div className="note-icon"><Sprout size={18}/></div><b>{t('A little care goes a long way.')}</b><p>{t('Track what you have. Waste a little less.')}</p><span>♻ &nbsp;{t('You’re making a difference')}</span></div>
-   <div className="profile"><div className="avatar">E</div><div><b>ExpiCare</b><small>{t('Personal space')}</small></div><span className="profile-settings">•••</span></div>
+   <button type="button" className="profile" onClick={openProfile} aria-label={t('Edit profile')} title={t('Edit profile')}><span className="avatar">{profileInitial}</span><span className="profile-copy"><b>{profile.name||'ExpiCare'}</b><small>{profile.note||t('Personal space')}</small></span><Pencil className="profile-settings" size={15}/></button>
   </aside>
   <main>
    <header className="topbar"><button className="icon mobile-menu" onClick={()=>setMobile(true)} aria-label={t('Open navigation')}><List/></button><div className="crumb">{t('My home')} <ChevronRight size={15}/><b>{selected?selected.name:t(page)}</b></div>
     <div className="top-tools"><span className="date-chip"><CalendarDays size={15}/>{new Date().toLocaleDateString(language==='hi'?'hi-IN':'en-IN',{weekday:'short',month:'short',day:'numeric'})}</span>
      <div className="language-toggle" role="group" aria-label={t('Choose language')}><button type="button" className={language==='en'?'selected':''} aria-pressed={language==='en'} onClick={()=>setLanguage('en')}>EN</button><button type="button" className={language==='hi'?'selected':''} aria-pressed={language==='hi'} onClick={()=>setLanguage('hi')}>हिंदी</button></div>
-     <button className="icon" title={t('Toggle light/dark mode')} aria-label={t('Toggle light/dark mode')} onClick={()=>setTheme(theme==='light'?'dark':'light')}>{theme==='light'?<Moon/>:<Sun/>}</button><button className="icon bell-button" title={t('Reminders')} aria-label={t('Reminders')} onClick={()=>go('Reminders')}><Bell/>{soon.length>0&&<i/>}</button><div className="avatar">E</div></div>
+     <button className="icon" title={t('Toggle light/dark mode')} aria-label={t('Toggle light/dark mode')} onClick={()=>setTheme(theme==='light'?'dark':'light')}>{theme==='light'?<Moon/>:<Sun/>}</button><button className="icon bell-button" title={t('Reminders')} aria-label={t('Reminders')} onClick={()=>go('Reminders')}><Bell/>{soon.length>0&&<i/>}</button><button className="avatar profile-avatar-button" type="button" onClick={openProfile} aria-label={t('Edit profile')} title={t('Edit profile')}>{profileInitial}</button></div>
    </header>
    <div className="content">{selected?<Details p={selected} back={()=>setSelected(null)} edit={()=>setModal(selected)} remove={()=>remove(selected)}/>:page==='Scan product'?<Scanner onBack={()=>go('Products')} onSave={product=>{setItems(current=>[product,...current]);go('Products');notify(t('Product added'))}}/>:page==='Dashboard'?<Dashboard items={items} upcoming={upcoming} soon={soon.length} go={go} add={()=>setModal({})} open={setSelected}/>:page==='Products'?<Products items={items} query={query} setQuery={setQuery} category={category} setCategory={setCategory} sort={sort} setSort={setSort} add={()=>setModal({})} open={setSelected}/>:page==='Categories'?<Categories items={items} choose={c=>{setCategory(c);go('Products')}}/>:page==='Reminders'?<Reminders items={items} soon={soon} open={setSelected}/>:<Recycle bin={bin} restore={restore} clear={()=>{setBin([]);notify(t('Recycle bin emptied'))}}/>}</div>
-   <footer><span>{t('Made with')} <Heart size={12} fill="currentColor"/> {t('for a little less waste')}</span><span>ExpiCare · {t('Smart expiry management')}</span></footer>
+   <footer><span>{t('Made by Aryan & Amit')} <Heart size={12} fill="currentColor"/></span><span>ExpiCare · {t('Smart expiry management')}</span></footer>
   </main>
-  {mobile&&<div className="scrim" onClick={()=>setMobile(false)}/>} {modal&&<OCRProductForm product={modal.id?modal:null} close={()=>setModal(null)} save={save}/>} {toast&&<div className="toast"><Check size={16}/>{toast}</div>}
+  {mobile&&<div className="scrim" onClick={()=>setMobile(false)}/>} {modal&&<OCRProductForm product={modal.id?modal:null} close={()=>setModal(null)} save={save}/>} {profileEditor&&<ProfileEditor profile={profile} close={()=>setProfileEditor(false)} save={saveProfile}/>} {toast&&<div className="toast"><Check size={16}/>{toast}</div>}
  </div>
 }
 function PageTitle({eyebrow,title,desc,action}){return <div className="page-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{desc}</p></div>{action}</div>}
@@ -95,4 +101,21 @@ function Reminders({items,soon,open}){const {t}=useTranslation();const later=ite
 function Recycle({bin,restore,clear}){const {language,t}=useTranslation();return <><PageTitle eyebrow={t('A SECOND CHANCE')} title={t('Recycle bin')} desc={t('Deleted products stay here until you restore or clear them.')} action={bin.length>0&&<button className="secondary danger" onClick={clear}><Trash2 size={15}/> {t('Empty bin')}</button>}/>{bin.length?<div className="rows">{bin.map(p=><div className="trash-row" key={p.id}><span className="compact-emoji">{p.emoji}</span><span className="compact-name"><b>{p.name}</b><small>{t('Deleted')} {new Date(p.deletedAt).toLocaleDateString(language==='hi'?'hi-IN':'en-IN',{month:'short',day:'numeric'})}</small></span><button className="secondary" onClick={()=>restore(p)}><RotateCcw size={15}/> {t('Restore')}</button></div>)}</div>:<Empty title={t('Nothing in the bin')} desc={t('Products you delete will find a home here for a while.')}/>}</>}
 function Details({p,back,edit,remove}){const {language,t}=useTranslation();return <><button className="back" onClick={back}><ChevronLeft size={17}/> {t('Back to products')}</button><div className="detail-heading"><div><div className="eyebrow">{t('PRODUCT DETAILS')}</div><h1>{p.name}</h1><p>{p.brand||t(p.category)}</p></div><div className="detail-buttons"><button className="secondary" onClick={edit}><Pencil size={15}/> {t('Edit')}</button><button className="icon danger-icon" title={t('Delete product')} aria-label={t('Delete product')} onClick={remove}><Trash2 size={17}/></button></div></div><div className="detail-grid"><section className="panel detail-panel"><div className="detail-illustration">{p.photo?<img src={p.photo} alt={p.name}/>:p.emoji||'📦'}</div><div className="detail-fields"><h3>{t('About this product')}</h3><Info label={t('Category')} value={t(p.category)}/><Info label={t('Quantity')} value={p.quantity||'—'}/>{p.barcode&&<Info label={t('Barcode')} value={p.barcode}/>}<Info label={t('Storage location')} value={p.location||'—'}/><Info label={t('Date added')} value={fmt(p.added||p.expiry,language)}/></div></section><section className="panel expiry-panel"><CalendarDays size={20}/><div className="eyebrow">{t('BEST BEFORE')}</div><h2>{new Date(p.expiry+'T12:00:00').toLocaleDateString(language==='hi'?'hi-IN':'en-IN',{month:'long',day:'numeric',year:'numeric'})}</h2><Pill date={p.expiry}/><hr/><div className="reminder-pref"><Bell size={16}/><span><b>{t('Gentle reminder')}</b><small>{p.reminder?t('You’ll get a heads-up'):t('Reminders are off')}</small></span><i className={p.reminder?'toggle on':'toggle'}/></div></section></div><div className="detail-tip"><Leaf size={17}/><span><b>{t('A little tip')}</b> &nbsp;{t('When in doubt, check the product before enjoying.')}</span></div></>}
 function Info({label,value}){return <div className="info-row"><span>{label}</span><b>{value}</b></div>}
+function ProfileEditor({profile,close,save}){
+ const {t}=useTranslation();
+ const [name,setName]=useState(profile.name||'');
+ const [note,setNote]=useState(profile.note||'');
+ const [error,setError]=useState('');
+ const submit=event=>{event.preventDefault();if(!name.trim()){setError(t('Enter a name to save your profile.'));return}save({name:name.trim(),note:note.trim()})};
+ return <div className="modal-shade" onClick={close}><section className="modal profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title" onClick={event=>event.stopPropagation()}>
+  <header className="modal-head"><div><div className="eyebrow">{t('YOUR PROFILE')}</div><h2 id="profile-modal-title">{t('Edit profile')}</h2><p>{t('Choose how your profile appears in ExpiCare.')}</p></div><button className="icon" type="button" onClick={close} aria-label={t('Close')} title={t('Close')}><X/></button></header>
+  <form onSubmit={submit}><div className="form-grid">
+   <label className="field wide"><span>{t('Display name')} <i>*</i></span><input autoFocus maxLength="40" value={name} onChange={event=>setName(event.target.value)} placeholder={t('e.g. Aryan')}/></label>
+   <label className="field wide"><span>{t('Profile note')}</span><textarea rows="3" maxLength="100" value={note} onChange={event=>setNote(event.target.value)} placeholder={t('Write a short note about yourself')}/></label>
+  </div>
+  {error&&<p className="error" role="alert"><AlertTriangle size={15}/>{error}</p>}
+  <div className="modal-actions"><button type="button" className="secondary" onClick={close}>{t('Cancel')}</button><button type="submit" className="primary"><Check size={16}/>{t('Save profile')}</button></div>
+  </form>
+ </section></div>;
+}
 export default App;

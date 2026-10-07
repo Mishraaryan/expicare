@@ -35,6 +35,14 @@ Object.assign(hindi, {
   'This product has already expired.':'यह उत्पाद पहले ही एक्सपायर हो चुका है।','Keep the details up to date.':'जानकारी अपडेट रखें।','Scan a label or enter the details yourself.':'लेबल स्कैन करें या जानकारी खुद भरें।'
 });
 
+Object.assign(hindi, {
+  'Made by Aryan & Amit':'Aryan और Amit द्वारा बनाया गया','Profile saved':'प्रोफ़ाइल सेव हो गई','YOUR PROFILE':'आपकी प्रोफ़ाइल','Edit profile':'प्रोफ़ाइल संपादित करें','Choose how your profile appears in ExpiCare.':'चुनें कि ExpiCare में आपकी प्रोफ़ाइल कैसी दिखे।','Display name':'दिखने वाला नाम','Profile note':'प्रोफ़ाइल नोट','e.g. Aryan':'जैसे, Aryan','Write a short note about yourself':'अपने बारे में एक छोटी-सी बात लिखें','Save profile':'प्रोफ़ाइल सेव करें','Enter a name to save your profile.':'प्रोफ़ाइल सेव करने के लिए नाम लिखें।','Browser storage is full. Profile changes could not be saved.':'ब्राउज़र स्टोरेज भर गया है। प्रोफ़ाइल बदलाव सेव नहीं हो पाए।'
+});
+
+Object.assign(hindi, {
+  'Improving label image…':'लेबल की तस्वीर साफ़ की जा रही है…','Trying another text-reading pass…':'टेक्स्ट पढ़ने की एक और कोशिश हो रही है…','Turn flashlight on':'फ्लैशलाइट चालू करें','Turn flashlight off':'फ्लैशलाइट बंद करें','Flashlight is not supported by this camera.':'इस कैमरे में फ्लैशलाइट की सुविधा नहीं है।','Could not switch the flashlight. Try again or continue without it.':'फ्लैशलाइट नहीं बदल पाई। फिर कोशिश करें या इसके बिना जारी रखें।'
+});
+
 const LanguageContext = createContext(null);
 
 export function LanguageProvider({ children }) {
