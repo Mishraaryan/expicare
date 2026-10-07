@@ -26,6 +26,8 @@ export default function ProductForm({ product, close, save }) {
     setError(''); setScanning(true); setProgress(0); setScanStage(t('Loading OCR…'));
     try {
       const found = await scanProductImage(form.photo, message => {
+        if (message.status === 'enhancing label image') setScanStage(t('Improving label image…'));
+        if (message.status === 'trying clearer text pass') setScanStage(t('Trying another text-reading pass…'));
         if (message.status === 'loading language traineddata') setScanStage(t('Loading English text data…'));
         if (message.status === 'recognizing text') { setScanStage(t('Reading package text…')); setProgress(Math.round((message.progress || 0) * 100)); }
       });

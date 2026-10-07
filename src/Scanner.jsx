@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Camera, Check, ImagePlus, LoaderCircle, RefreshCw, ScanLine, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Camera, Check, Flashlight, FlashlightOff, ImagePlus, LoaderCircle, RefreshCw, ScanLine, ShieldCheck } from 'lucide-react';
 import { scanProductImage } from './ocr.js';
 import { useTranslation } from './i18n.jsx';
 
@@ -36,6 +36,10 @@ export default function Scanner({ onBack, onSave }) {
   const lookupRef = useRef(null);
   const lookupAbortRef = useRef(null);
   const [camera, setCamera] = useState('starting');
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchBusy, setTorchBusy] = useState(false);
+  const [torchMessage, setTorchMessage] = useState('');
   const [photo, setPhoto] = useState('');
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -51,11 +55,16 @@ export default function Scanner({ onBack, onSave }) {
   const alreadyExpired = Boolean(form.expiry && form.expiry < todayString);
   const formattedExpiry = form.expiry ? new Date(`${form.expiry}T12:00:00`).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
 
-  const stopCamera = useCallback(() => {
+  const stopCamera = useCallback((resetTorch = false) => {
     cameraRequestRef.current += 1;
     streamRef.current?.getTracks().forEach(track => track.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
+    if (resetTorch) {
+      setTorchOn(false);
+      setTorchSupported(false);
+      setTorchMessage('');
+    }
   }, []);
 
   const lookupBarcode = async code => {
@@ -128,6 +137,12 @@ export default function Scanner({ onBack, onSave }) {
         return;
       }
       streamRef.current = stream;
+      const videoTrack = stream.getVideoTracks()[0];
+      let supportsTorch = false;
+      try { supportsTorch = Boolean(videoTrack?.getCapabilities?.().torch); } catch { /* Some browsers do not expose camera capabilities. */ }
+      setTorchSupported(supportsTorch);
+      setTorchOn(false);
+      setTorchMessage(supportsTorch ? '' : 'Flashlight is not supported by this camera.');
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
@@ -142,6 +157,24 @@ export default function Scanner({ onBack, onSave }) {
       }
     }
   }, []);
+
+  const toggleTorch = async () => {
+    if (torchBusy) return;
+    const videoTrack = streamRef.current?.getVideoTracks()[0];
+    if (!videoTrack?.applyConstraints) {
+      setTorchMessage('Flashlight is not supported by this camera.');
+      return;
+    }
+    const nextTorchState = !torchOn;
+    setTorchBusy(true);
+    try {
+      await videoTrack.applyConstraints({ advanced: [{ torch: nextTorchState }] });
+      setTorchOn(nextTorchState);
+      setTorchMessage('');
+    } catch {
+      setTorchMessage('Could not switch the flashlight. Try again or continue without it.');
+    } finally { setTorchBusy(false); }
+  };
 
   useEffect(() => { startCamera(); return stopCamera; }, [startCamera, stopCamera]);
   useEffect(() => {
@@ -203,6 +236,8 @@ export default function Scanner({ onBack, onSave }) {
     setScanning(true); setProgress(0); setStage('Preparing OCR…'); setError(''); setScanText('');
     try {
       const result = await scanProductImage(image, message => {
+        if (message.status === 'enhancing label image') setStage('Improving label image…');
+        if (message.status === 'trying clearer text pass') setStage('Trying another text-reading pass…');
         if (message.status === 'loading language traineddata') setStage('Loading English text data…');
         if (message.status === 'recognizing text') { setStage('Reading label…'); setProgress(Math.round((message.progress || 0) * 100)); }
       });
@@ -226,14 +261,14 @@ export default function Scanner({ onBack, onSave }) {
     if (!context) return setError('Camera image could not be captured.');
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const image = canvas.toDataURL('image/jpeg', .82);
-    setPhoto(image); setCamera('captured'); stopCamera(); await recognize(image);
+    setPhoto(image); setCamera('captured'); stopCamera(true); await recognize(image);
   };
 
   const upload = async event => {
     const file = event.target.files?.[0]; event.target.value = '';
     if (!file) return;
     if (file.size > 8e6) return setError('Photo must be smaller than 8 MB.');
-    try { const image = await compressImage(file); setPhoto(image); setCamera('captured'); stopCamera(); await recognize(image); }
+    try { const image = await compressImage(file); setPhoto(image); setCamera('captured'); stopCamera(true); await recognize(image); }
     catch { setError('Could not read the photo. Try another image.'); }
   };
 
@@ -258,10 +293,12 @@ export default function Scanner({ onBack, onSave }) {
         </div>
         <div className="camera-actions">
           {camera === 'ready' && !photo ? <button className="primary capture-button" onClick={capture}><ScanLine size={17}/> {t('Capture & scan')}</button> : null}
+          {camera === 'ready' && !photo && torchSupported && <button type="button" className={`secondary torch-button ${torchOn ? 'torch-active' : ''}`} aria-pressed={torchOn} disabled={torchBusy} onClick={toggleTorch}>{torchOn ? <FlashlightOff size={16}/> : <Flashlight size={16}/>} {t(torchOn ? 'Turn flashlight off' : 'Turn flashlight on')}</button>}
           {(camera === 'unavailable' || photo) && <label className="secondary upload-camera"><ImagePlus size={16}/>{photo ? t('Choose another photo') : t('Upload label photo')}<input type="file" accept="image/*" capture="environment" aria-label={photo ? t('Choose another photo') : t('Upload label photo')} onChange={upload}/></label>}
           {photo && !scanning && <button className="secondary" onClick={startCamera}><RefreshCw size={15}/> {t('Retake')}</button>}
           {scanning && <span className="scan-live"><LoaderCircle size={15} className="spin"/> {progress}%</span>}
         </div>
+        {camera === 'ready' && !photo && torchMessage && <p className={`torch-message ${torchSupported ? 'torch-warning' : ''}`} aria-live="polite"><FlashlightOff size={14}/><span>{t(torchMessage)}</span></p>}
         {scanning && <div className="scanner-progress" aria-live="polite"><span>{t(stage)}</span><div><i style={{ width: `${Math.max(progress, 8)}%` }}/></div></div>}
         {(camera === 'ready' || (form.barcode && camera !== 'starting')) && <p className="barcode-status" aria-live="polite">{t(barcodeStatus.key, barcodeStatus.values)}</p>}
         <div className="privacy-note"><ShieldCheck size={15}/><span>{t('Label photos are scanned in your browser. The barcode number is sent to Open Food Facts to look up catalogue details.')}</span></div>

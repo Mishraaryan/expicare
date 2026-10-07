@@ -37,23 +37,113 @@ function expiryFromLine(line) {
 
 export function extractProductDetails(rawText) {
   const lines = rawText.split(/\r?\n/).map(line => line.replace(/[^\p{L}\p{N}\s:/.\-,]/gu, ' ').trim()).filter(Boolean);
-  const expiryLines = lines.filter(line => /\b(exp(?:iry|iration)?|use by|best before|bb(?:e)?)\b/i.test(line) && !/\b(mfg|manufactur(?:ed|ing)?|packed on)\b/i.test(line));
+  const isManufactureLine = line => /\b(mfg|mfd|manufactur(?:ed|ing)?|date of manufacture|packed (?:on|date)|pkd)\b/i.test(line);
+  const hasExpiryMarker = line => /\b(exp(?:iry|iration)?(?:\s+date)?|use\s+(?:by|before)|best\s+(?:before|by)|bb(?:e)?|b\.b\.e)\b/i.test(line);
+  const expiryLines = lines.filter(line => hasExpiryMarker(line) && !isManufactureLine(line));
   let expiry = expiryLines.map(expiryFromLine).find(Boolean);
   if (!expiry) {
-    const dates = lines.map(expiryFromLine).filter(Boolean);
+    const dates = lines.filter(line => !isManufactureLine(line)).map(expiryFromLine).filter(Boolean);
     expiry = dates.find(date => date >= new Date().toISOString().slice(0, 10)) || dates[0] || '';
   }
 
-  const name = lines.find(line => /[A-Za-z]/.test(line) && line.length >= 3 && line.length <= 70 && !/\b(exp|expiry|expiration|best before|use by|mfg|manufactur|packed on|batch|lot|ingredients|nutrition|net wt|mrp|barcode)\b/i.test(line) && !expiryFromLine(line)) || '';
+  const name = lines.find(line => /[A-Za-z]/.test(line) && line.length >= 3 && line.length <= 70 && !hasExpiryMarker(line) && !isManufactureLine(line) && !/\b(batch|lot|ingredients|nutrition|net wt|mrp|barcode)\b/i.test(line) && !expiryFromLine(line)) || '';
   return { name, expiry: expiry || '' };
+}
+
+function preprocessImage(source, threshold = false) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onerror = () => reject(new Error('Could not load image for OCR'));
+    image.onload = () => {
+      const longestSide = Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height);
+      const scale = Math.min(2, 2200 / longestSide);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) return reject(new Error('Image canvas is unavailable'));
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+      const luminance = new Uint8Array(canvas.width * canvas.height);
+      const histogram = new Uint32Array(256);
+      for (let index = 0; index < luminance.length; index += 1) {
+        const offset = index * 4;
+        const gray = Math.round(pixels.data[offset] * 0.299 + pixels.data[offset + 1] * 0.587 + pixels.data[offset + 2] * 0.114);
+        const enhanced = Math.max(0, Math.min(255, Math.round((gray - 128) * 1.45 + 128)));
+        luminance[index] = enhanced;
+        histogram[enhanced] += 1;
+      }
+
+      let cutoff = 145;
+      if (threshold) {
+        const total = luminance.length;
+        let sum = 0;
+        for (let value = 0; value < 256; value += 1) sum += value * histogram[value];
+        let backgroundWeight = 0;
+        let backgroundSum = 0;
+        let bestVariance = -1;
+        for (let value = 0; value < 256; value += 1) {
+          backgroundWeight += histogram[value];
+          if (!backgroundWeight) continue;
+          const foregroundWeight = total - backgroundWeight;
+          if (!foregroundWeight) break;
+          backgroundSum += value * histogram[value];
+          const backgroundMean = backgroundSum / backgroundWeight;
+          const foregroundMean = (sum - backgroundSum) / foregroundWeight;
+          const variance = backgroundWeight * foregroundWeight * (backgroundMean - foregroundMean) ** 2;
+          if (variance > bestVariance) { bestVariance = variance; cutoff = value; }
+        }
+      }
+
+      for (let index = 0; index < luminance.length; index += 1) {
+        const value = threshold ? (luminance[index] > cutoff ? 255 : 0) : luminance[index];
+        const offset = index * 4;
+        pixels.data[offset] = value;
+        pixels.data[offset + 1] = value;
+        pixels.data[offset + 2] = value;
+      }
+      context.putImageData(pixels, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', threshold ? 0.94 : 0.9));
+    };
+    image.src = source;
+  });
+}
+
+function rateRecognition(data) {
+  const details = extractProductDetails(data.text || '');
+  const hasDateLabel = /\b(exp(?:iry|iration)?|use\s+(?:by|before)|best\s+(?:before|by)|bb(?:e)?)\b/i.test(data.text || '');
+  const score = (data.confidence || 0) + (details.expiry ? 38 : 0) + (details.name ? 14 : 0) + (hasDateLabel ? 12 : 0);
+  return { details, score };
 }
 
 export async function scanProductImage(image, onProgress = () => {}) {
   let worker;
   try {
+    onProgress({ status: 'enhancing label image', progress: 0 });
+    const enhanced = await preprocessImage(image).catch(() => image);
     worker = await createWorker('eng', 1, { logger: onProgress });
-    const { data: { text } } = await worker.recognize(image);
-    return { text: text.trim(), ...extractProductDetails(text) };
+    await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1', user_defined_dpi: '300' });
+    const first = await worker.recognize(enhanced);
+    let best = first.data;
+    let bestRating = rateRecognition(best);
+
+    if (!(bestRating.details.name && bestRating.details.expiry && best.confidence >= 72)) {
+      onProgress({ status: 'trying clearer text pass', progress: 0 });
+      const highContrast = await preprocessImage(image, true).catch(() => enhanced);
+      await worker.setParameters({ tessedit_pageseg_mode: '3' });
+      const second = await worker.recognize(highContrast);
+      const secondRating = rateRecognition(second.data);
+      if (secondRating.score > bestRating.score) {
+        best = second.data;
+        bestRating = secondRating;
+      }
+    }
+
+    const text = (best.text || '').trim();
+    return { text, ...bestRating.details };
   } finally {
     if (worker) await worker.terminate().catch(() => {});
   }
