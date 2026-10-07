@@ -43,6 +43,10 @@ export default function Scanner({ onBack, onSave }) {
   const [error, setError] = useState('');
   const [form, setForm] = useState({ name: '', expiry: '', brand: '', category: 'Other', quantity: '', location: '', reminder: true });
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }));
+  const today = new Date();
+  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const alreadyExpired = Boolean(form.expiry && form.expiry < todayString);
+  const formattedExpiry = form.expiry ? new Date(`${form.expiry}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
 
   const stopCamera = useCallback(() => {
     cameraRequestRef.current += 1;
@@ -266,6 +270,7 @@ export default function Scanner({ onBack, onSave }) {
         <form onSubmit={save} className="scanner-form">
           <label className="field"><span>Product name <i>*</i></span><input maxLength="70" value={form.name} onChange={event => set('name', event.target.value)} placeholder="Detected name or enter it"/></label>
           <label className="field"><span>Expiry / best-before date <i>*</i></span><input type="date" value={form.expiry} onChange={event => set('expiry', event.target.value)}/></label>
+          {alreadyExpired && <div className="scanner-expired-warning" role="alert"><AlertTriangle size={17}/><span><b>Yeh product pehle se expired hai.</b><small>Expiry date {formattedExpiry} beet chuki hai. Isse use na karein; label ya disposal guidance check karein.</small></span></div>}
           <div className="scanner-two-col"><label className="field"><span>Brand</span><input maxLength="50" value={form.brand} onChange={event => set('brand', event.target.value)} placeholder="Optional"/></label><label className="field"><span>Category</span><select value={form.category} onChange={event => set('category', event.target.value)}>{categories.map(category => <option key={category}>{category}</option>)}</select></label></div>
           <div className="scanner-two-col"><label className="field"><span>Quantity</span><input maxLength="40" value={form.quantity} onChange={event => set('quantity', event.target.value)} placeholder="Optional"/></label><label className="field"><span>Storage location</span><input maxLength="60" value={form.location} onChange={event => set('location', event.target.value)} placeholder="Optional"/></label></div>
           <label className="scanner-reminder"><input type="checkbox" checked={form.reminder} onChange={event => set('reminder', event.target.checked)}/><span>Remind me 3 days before expiry</span></label>

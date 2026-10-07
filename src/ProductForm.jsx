@@ -14,6 +14,10 @@ export default function ProductForm({ product, close, save }) {
   const [progress, setProgress] = useState(0);
   const [scanStage, setScanStage] = useState('');
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }));
+  const today = new Date();
+  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const alreadyExpired = Boolean(form.expiry && form.expiry < todayString);
+  const formattedExpiry = form.expiry ? new Date(`${form.expiry}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
 
   const scanLabel = async () => {
     if (!form.photo || scanning) return;
@@ -49,6 +53,7 @@ export default function ProductForm({ product, close, save }) {
       <label className="field"><span>Quantity</span><input maxLength="40" value={form.quantity} onChange={event => set('quantity', event.target.value)} placeholder="e.g. 2 cups"/></label>
       <label className="field"><span>Storage location</span><input maxLength="60" value={form.location} onChange={event => set('location', event.target.value)} placeholder="e.g. Fridge · Top shelf"/></label>
       <label className="field"><span>Expiry / best-before <i>*</i></span><input type="date" value={form.expiry} onChange={event => set('expiry', event.target.value)}/></label>
+      {alreadyExpired && <div className="scanner-expired-warning wide" role="alert"><AlertTriangle size={17}/><span><b>Yeh product pehle se expired hai.</b><small>Expiry date {formattedExpiry} beet chuki hai. Isse use na karein; label ya disposal guidance check karein.</small></span></div>}
       <div className="field"><span>Package photo</span><div className="ocr-controls"><label className="file-picker"><Camera size={15}/>{form.photo ? 'Change photo' : 'Choose a photo'}<input type="file" accept="image/*" capture="environment" onChange={event => {
         const file = event.target.files?.[0]; if (!file) return;
         if (file.size > 2e6) { setError('Image 2 MB se chhoti honi chahiye.'); return; }
