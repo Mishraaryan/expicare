@@ -1,0 +1,18 @@
+{
+  "name": "ExpiCare — Smart Expiry Management",
+  "short_name": "ExpiCare",
+  "description": "Keep track of product expiry dates and reminders.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f8f5",
+  "theme_color": "#0c4438",
+  "icons": [
+    {
+      "src": "./expicare-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import React,{useEffect,useMemo,useState} from 'react';
+import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {AlertTriangle,Archive,ArrowDownUp,Bell,CalendarDays,Check,ChevronDown,ChevronLeft,ChevronRight,Clock3,Grid2X2,Heart,LayoutDashboard,Leaf,List,MapPin,Moon,Package,Plus,RotateCcw,Search,ShieldCheck,Sun,Trash2,X,Pencil,Filter,Sprout,ScanLine} from 'lucide-react';
 import OCRProductForm from './ProductForm.jsx';
 import Scanner from './Scanner.jsx';
@@ -20,15 +20,96 @@ function App(){
  const [profile,setProfile]=useState(()=>{const value=safeRead('expicare.profile',{});return {name:typeof value?.name==='string'?value.name:'ExpiCare',note:typeof value?.note==='string'?value.note:''}});
  const [theme,setTheme]=useState(()=>localStorage.getItem('expicare.theme')||'light');
  const [page,setPage]=useState('Dashboard'),[query,setQuery]=useState(''),[category,setCategory]=useState('All items'),[sort,setSort]=useState('expiry'),[modal,setModal]=useState(null),[profileEditor,setProfileEditor]=useState(false),[selected,setSelected]=useState(null),[toast,setToast]=useState(''),[mobile,setMobile]=useState(false),[loading,setLoading]=useState(true);
+ const [notificationPermission,setNotificationPermission]=useState(()=>typeof Notification==='undefined'?'unsupported':Notification.permission);
+ const [notificationRegistration,setNotificationRegistration]=useState(null),[alertsMessage,setAlertsMessage]=useState('');
+ const [soundEnabled,setSoundEnabled]=useState(()=>safeRead('expicare.soundEnabled',false)===true);
+ const audioContextRef=useRef(null),sentReminderKeysRef=useRef(new Set(safeRead('expicare.sentReminderKeys',[])));
+ const notify=useCallback(message=>{setToast(message);setTimeout(()=>setToast(''),3200)},[]);
+ const playReminderTone=useCallback((force=false)=>{
+  if(!force&&!soundEnabled)return;
+  try{
+   const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+   if(!AudioContextClass)return;
+   const context=audioContextRef.current||(audioContextRef.current=new AudioContextClass());
+   if(context.state==='suspended')context.resume().catch(()=>{});
+   const oscillator=context.createOscillator(),gain=context.createGain(),start=context.currentTime;
+   oscillator.type='sine';oscillator.frequency.setValueAtTime(660,start);oscillator.frequency.setValueAtTime(880,start+.17);
+   gain.gain.setValueAtTime(.001,start);gain.gain.exponentialRampToValueAtTime(.13,start+.025);gain.gain.exponentialRampToValueAtTime(.001,start+.55);
+   oscillator.connect(gain);gain.connect(context.destination);oscillator.start(start);oscillator.stop(start+.56);
+  }catch{/* Audio is optional; visual and system alerts still work. */}
+ },[soundEnabled]);
+ const enableAlerts=async()=>{
+  if(typeof Notification==='undefined'){
+   setNotificationPermission('unsupported');setAlertsMessage(t('Browser notifications are not supported here.'));return;
+  }
+  try{
+   const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission();
+   setNotificationPermission(permission);
+   if(permission==='granted'){
+    setSoundEnabled(true);persist('expicare.soundEnabled',true);await playReminderTone(true);
+    setAlertsMessage(t('Notifications are on. Keep ExpiCare open for reminders.'));
+    try{
+     const registration=notificationRegistration||(navigator.serviceWorker?await navigator.serviceWorker.ready:null);
+     const options={body:t('Notifications are on. Keep ExpiCare open for reminders.'),icon:logo,tag:'expicare-alerts-test',silent:true};
+     if(registration?.showNotification)await registration.showNotification(t('Notifications enabled'),options);
+     else new Notification(t('Notifications enabled'),options);
+    }catch{/* The reminder panel still confirms the permission state. */}
+   }else setAlertsMessage(t('Allow notifications in browser settings, then try again.'));
+  }catch{setAlertsMessage(t('Allow notifications in browser settings, then try again.'))}
+ };
+ const changeSound=event=>{
+  const enabled=event.target.checked;setSoundEnabled(enabled);persist('expicare.soundEnabled',enabled);
+  if(enabled)playReminderTone(true);
+ };
  useEffect(()=>{if(!persist('expicare.products',items))notify(t('Browser storage is full. Remove a photo or product to save changes.'))},[items]);
  useEffect(()=>{if(!persist('expicare.bin',bin))notify(t('Browser storage is full. Empty the recycle bin to save changes.'))},[bin]);
  useEffect(()=>{if(!persist('expicare.profile',profile))notify(t('Browser storage is full. Profile changes could not be saved.'))},[profile]);
  useEffect(()=>{try{localStorage.setItem('expicare.theme',theme)}catch{}document.documentElement.dataset.theme=theme},[theme]);
  useEffect(()=>{const timer=setTimeout(()=>setLoading(false),1200);return()=>clearTimeout(timer)},[]);
  useEffect(()=>{if(!mobile)return;const previous=document.body.style.overflow;const closeOnEscape=event=>{if(event.key==='Escape')setMobile(false)};document.body.style.overflow='hidden';window.addEventListener('keydown',closeOnEscape);return()=>{document.body.style.overflow=previous;window.removeEventListener('keydown',closeOnEscape)}},[mobile]);
+ useEffect(()=>{
+  if(!('serviceWorker'in navigator)||!window.isSecureContext)return;
+  let active=true;
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).then(registration=>{if(active)setNotificationRegistration(registration)}).catch(()=>{});
+  return()=>{active=false};
+ },[]);
  const soon=useMemo(()=>items.filter(p=>p.reminder&&getDays(p.expiry)<=3),[items]);
  const upcoming=items.filter(p=>getDays(p.expiry)>=0&&getDays(p.expiry)<=7).sort((a,b)=>a.expiry.localeCompare(b.expiry));
- const notify=m=>{setToast(m);setTimeout(()=>setToast(''),2400)};
+ useEffect(()=>{
+  if(loading||!items.length)return;
+  const checkDueReminders=async()=>{
+   if(notificationPermission!=='granted'&&!soundEnabled)return;
+   const known=new Set([...sentReminderKeysRef.current,...safeRead('expicare.sentReminderKeys',[])]),due=[];
+   for(const product of items){
+    if(!product.reminder||!product.expiry)continue;
+    const days=getDays(product.expiry);if(days>3)continue;
+    const kind=days<=0?'expired':'upcoming',key=`${kind}:${product.id}:${product.expiry}`;
+    if(known.has(key))continue;known.add(key);due.push({product,days});
+   }
+   if(!due.length){sentReminderKeysRef.current=known;return;}
+   sentReminderKeysRef.current=known;persist('expicare.sentReminderKeys',[...known].slice(-300));
+   const lines=due.slice(0,3).map(({product,days})=>{
+    const timing=days<0?t('Already expired'):days===0?t('Expires today'):days===1?t('Expires tomorrow'):t('Expires in {days} days',{days});
+    return `${product.name}: ${timing}`;
+   });
+   if(due.length>3)lines.push(t('and {count} more',{count:due.length-3}));
+   const body=lines.join(' · '),title=t('Expiry reminder');
+   notify(body);playReminderTone(notificationPermission!=='granted');
+   if(notificationPermission==='granted'){
+    const options={body,icon:logo,tag:`expicare-reminders-${new Date().toISOString().slice(0,10)}`,renotify:true,silent:!soundEnabled};
+    try{
+     const registration=notificationRegistration||(navigator.serviceWorker?await navigator.serviceWorker.ready:null);
+     if(registration?.showNotification)await registration.showNotification(title,options);
+     else new Notification(title,options);
+    }catch{/* Browser settings may block a system pop-up; the in-app alert remains visible. */}
+   }
+  };
+  checkDueReminders();
+  const timer=setInterval(checkDueReminders,60_000);
+  const checkWhenVisible=()=>{if(document.visibilityState==='visible')checkDueReminders()};
+  window.addEventListener('focus',checkDueReminders);document.addEventListener('visibilitychange',checkWhenVisible);
+  return()=>{clearInterval(timer);window.removeEventListener('focus',checkDueReminders);document.removeEventListener('visibilitychange',checkWhenVisible)};
+ },[items,loading,notificationPermission,notificationRegistration,notify,playReminderTone,t]);
  const nav=['Dashboard','Scan product','Products','Categories','Reminders','Recycle bin'];
  const go=p=>{setPage(p);setSelected(null);setMobile(false)};
  const remove=p=>{setBin(b=>[{...p,deletedAt:new Date().toISOString()},...b]);setItems(a=>a.filter(x=>x.id!==p.id));setSelected(null);notify(t('Moved to recycle bin'))};
@@ -53,7 +134,7 @@ function App(){
      <div className="language-toggle" role="group" aria-label={t('Choose language')}><button type="button" className={language==='en'?'selected':''} aria-pressed={language==='en'} onClick={()=>setLanguage('en')}>EN</button><button type="button" className={language==='hi'?'selected':''} aria-pressed={language==='hi'} onClick={()=>setLanguage('hi')}>हिंदी</button></div>
      <button className="icon" title={t('Toggle light/dark mode')} aria-label={t('Toggle light/dark mode')} onClick={()=>setTheme(theme==='light'?'dark':'light')}>{theme==='light'?<Moon/>:<Sun/>}</button><button className="icon bell-button" title={t('Reminders')} aria-label={t('Reminders')} onClick={()=>go('Reminders')}><Bell/>{soon.length>0&&<i/>}</button><button className="avatar profile-avatar-button" type="button" onClick={openProfile} aria-label={t('Edit profile')} title={t('Edit profile')}>{profileInitial}</button></div>
    </header>
-   <div className="content">{selected?<Details p={selected} back={()=>setSelected(null)} edit={()=>setModal(selected)} remove={()=>remove(selected)}/>:page==='Scan product'?<Scanner onBack={()=>go('Products')} onSave={product=>{setItems(current=>[product,...current]);go('Products');notify(t('Product added'))}}/>:page==='Dashboard'?<Dashboard items={items} upcoming={upcoming} soon={soon.length} go={go} add={()=>setModal({})} open={setSelected}/>:page==='Products'?<Products items={items} query={query} setQuery={setQuery} category={category} setCategory={setCategory} sort={sort} setSort={setSort} add={()=>setModal({})} open={setSelected}/>:page==='Categories'?<Categories items={items} choose={c=>{setCategory(c);go('Products')}}/>:page==='Reminders'?<Reminders items={items} soon={soon} open={setSelected}/>:<Recycle bin={bin} restore={restore} clear={()=>{setBin([]);notify(t('Recycle bin emptied'))}}/>}</div>
+   <div className="content">{selected?<Details p={selected} back={()=>setSelected(null)} edit={()=>setModal(selected)} remove={()=>remove(selected)}/>:page==='Scan product'?<Scanner onBack={()=>go('Products')} onSave={product=>{setItems(current=>[product,...current]);go('Products');notify(t('Product added'))}}/>:page==='Dashboard'?<Dashboard items={items} upcoming={upcoming} soon={soon.length} go={go} add={()=>setModal({})} open={setSelected}/>:page==='Products'?<Products items={items} query={query} setQuery={setQuery} category={category} setCategory={setCategory} sort={sort} setSort={setSort} add={()=>setModal({})} open={setSelected}/>:page==='Categories'?<Categories items={items} choose={c=>{setCategory(c);go('Products')}}/>:page==='Reminders'?<Reminders items={items} soon={soon} open={setSelected} permission={notificationPermission} enableAlerts={enableAlerts} soundEnabled={soundEnabled} onSoundChange={changeSound} message={alertsMessage}/>:<Recycle bin={bin} restore={restore} clear={()=>{setBin([]);notify(t('Recycle bin emptied'))}}/>}</div>
    <footer><span>{t('Made by Aryan & Amit')} <Heart size={12} fill="currentColor"/></span><span>ExpiCare · {t('Smart expiry management')}</span></footer>
   </main>
   {mobile&&<div className="scrim" onClick={()=>setMobile(false)}/>} {modal&&<OCRProductForm product={modal.id?modal:null} close={()=>setModal(null)} save={save}/>} {profileEditor&&<ProfileEditor profile={profile} close={()=>setProfileEditor(false)} save={saveProfile}/>} {toast&&<div className="toast"><Check size={16}/>{toast}</div>}
@@ -97,7 +178,7 @@ function Products({items,query,setQuery,category,setCategory,sort,setSort,add,op
  </>;
 }
 function Categories({items,choose}){const {t}=useTranslation();const cats=[...new Set(items.map(p=>p.category))];const emoji={Produce:'🥑',Dairy:'🥛',Healthcare:'💊',Bakery:'🥐',Pantry:'🫙','Dairy alternatives':'🧃'};return <><PageTitle eyebrow={t('A PLACE FOR EVERYTHING')} title={t('Categories')} desc={t('A little order makes mindful living feel effortless.')}/><div className="category-grid">{cats.map((c,i)=><button className="category-card" key={c} onClick={()=>choose(c)}><span className={'category-emoji cat-'+i%5}>{emoji[c]||'📦'}</span><span className="category-name"><b>{t(c)}</b><small>{items.filter(p=>p.category===c).length} {t('products')}</small></span><span className="cat-preview">{items.filter(p=>p.category===c).slice(0,3).map(p=><i key={p.id}>{p.emoji}</i>)}</span><ChevronRight size={16}/></button>)}</div></>}
-function Reminders({items,soon,open}){const {t}=useTranslation();const later=items.filter(p=>p.reminder&&getDays(p.expiry)>3).sort((a,b)=>a.expiry.localeCompare(b.expiry));return <><PageTitle eyebrow={t('A FRIENDLY NUDGE')} title={t('Reminders')} desc={t('A heads-up when something could use your attention.')}/><div className="reminder-intro"><span><Bell size={20}/></span><div><b>{t('You’re in the loop')}</b><p>{t('Reminders are shown for products expiring within 3 days. Adjust them on each product.')}</p></div><small>{soon.length} {t('active')}</small></div><h4 className="section-label">{t('NEEDS A LITTLE LOVE')}</h4>{soon.length?<div className="rows">{soon.map(p=><ProductRow key={p.id} p={p} open={()=>open(p)}/>)}</div>:<Empty title={t('A quiet day ahead')} desc={t('No products need a reminder right now.')}/>}<h4 className="section-label">{t('UPCOMING REMINDERS')}</h4>{later.length?<div className="rows">{later.map(p=><ProductRow key={p.id} p={p} open={()=>open(p)}/>)}</div>:<p className="muted">{t('No more reminders scheduled.')}</p>}</>}
+function Reminders({items,soon,open,permission,enableAlerts,soundEnabled,onSoundChange,message}){const {t}=useTranslation();const later=items.filter(p=>p.reminder&&getDays(p.expiry)>3).sort((a,b)=>a.expiry.localeCompare(b.expiry));const buttonText=permission==='granted'?'Notifications enabled':permission==='denied'?'Enable notifications in browser':'Enable pop-up alerts and sound';return <><PageTitle eyebrow={t('A FRIENDLY NUDGE')} title={t('Reminders')} desc={t('A heads-up when something could use your attention.')}/><div className="reminder-intro"><span><Bell size={20}/></span><div><b>{t('You’re in the loop')}</b><p>{t('Reminders are shown for products expiring within 3 days. Adjust them on each product.')}</p></div><small>{soon.length} {t('active')}</small></div><section className="notification-settings panel"><div className="notification-settings-copy"><b>{t('Enable pop-up alerts and sound')}</b><p>{t('Pop-up reminders are checked while ExpiCare is open.')}</p><small>{t('Products are saved on this device; alerts do not sync to other devices yet.')}</small></div><div className="notification-settings-controls"><button className="secondary" type="button" onClick={enableAlerts} disabled={permission==='unsupported'}>{permission==='granted'&&<Check size={15}/>} {t(buttonText)}</button><label><input type="checkbox" checked={soundEnabled} onChange={onSoundChange}/>{t('Sound with reminders')}</label></div>{message&&<p className="notification-settings-message" role="status">{message}</p>}</section><h4 className="section-label">{t('NEEDS A LITTLE LOVE')}</h4>{soon.length?<div className="rows">{soon.map(p=><ProductRow key={p.id} p={p} open={()=>open(p)}/>)}</div>:<Empty title={t('A quiet day ahead')} desc={t('No products need a reminder right now.')}/>}<h4 className="section-label">{t('UPCOMING REMINDERS')}</h4>{later.length?<div className="rows">{later.map(p=><ProductRow key={p.id} p={p} open={()=>open(p)}/>)}</div>:<p className="muted">{t('No more reminders scheduled.')}</p>}</>}
 function Recycle({bin,restore,clear}){const {language,t}=useTranslation();return <><PageTitle eyebrow={t('A SECOND CHANCE')} title={t('Recycle bin')} desc={t('Deleted products stay here until you restore or clear them.')} action={bin.length>0&&<button className="secondary danger" onClick={clear}><Trash2 size={15}/> {t('Empty bin')}</button>}/>{bin.length?<div className="rows">{bin.map(p=><div className="trash-row" key={p.id}><span className="compact-emoji">{p.emoji}</span><span className="compact-name"><b>{p.name}</b><small>{t('Deleted')} {new Date(p.deletedAt).toLocaleDateString(language==='hi'?'hi-IN':'en-IN',{month:'short',day:'numeric'})}</small></span><button className="secondary" onClick={()=>restore(p)}><RotateCcw size={15}/> {t('Restore')}</button></div>)}</div>:<Empty title={t('Nothing in the bin')} desc={t('Products you delete will find a home here for a while.')}/>}</>}
 function Details({p,back,edit,remove}){const {language,t}=useTranslation();return <><button className="back" onClick={back}><ChevronLeft size={17}/> {t('Back to products')}</button><div className="detail-heading"><div><div className="eyebrow">{t('PRODUCT DETAILS')}</div><h1>{p.name}</h1><p>{p.brand||t(p.category)}</p></div><div className="detail-buttons"><button className="secondary" onClick={edit}><Pencil size={15}/> {t('Edit')}</button><button className="icon danger-icon" title={t('Delete product')} aria-label={t('Delete product')} onClick={remove}><Trash2 size={17}/></button></div></div><div className="detail-grid"><section className="panel detail-panel"><div className="detail-illustration">{p.photo?<img src={p.photo} alt={p.name}/>:p.emoji||'📦'}</div><div className="detail-fields"><h3>{t('About this product')}</h3><Info label={t('Category')} value={t(p.category)}/><Info label={t('Quantity')} value={p.quantity||'—'}/>{p.barcode&&<Info label={t('Barcode')} value={p.barcode}/>}<Info label={t('Storage location')} value={p.location||'—'}/><Info label={t('Date added')} value={fmt(p.added||p.expiry,language)}/></div></section><section className="panel expiry-panel"><CalendarDays size={20}/><div className="eyebrow">{t('BEST BEFORE')}</div><h2>{new Date(p.expiry+'T12:00:00').toLocaleDateString(language==='hi'?'hi-IN':'en-IN',{month:'long',day:'numeric',year:'numeric'})}</h2><Pill date={p.expiry}/><hr/><div className="reminder-pref"><Bell size={16}/><span><b>{t('Gentle reminder')}</b><small>{p.reminder?t('You’ll get a heads-up'):t('Reminders are off')}</small></span><i className={p.reminder?'toggle on':'toggle'}/></div></section></div><div className="detail-tip"><Leaf size={17}/><span><b>{t('A little tip')}</b> &nbsp;{t('When in doubt, check the product before enjoying.')}</span></div></>}
 function Info({label,value}){return <div className="info-row"><span>{label}</span><b>{value}</b></div>}

@@ -43,6 +43,11 @@ Object.assign(hindi, {
   'Improving label image…':'लेबल की तस्वीर साफ़ की जा रही है…','Trying another text-reading pass…':'टेक्स्ट पढ़ने की एक और कोशिश हो रही है…','Turn flashlight on':'फ्लैशलाइट चालू करें','Turn flashlight off':'फ्लैशलाइट बंद करें','Flashlight is not supported by this camera.':'इस कैमरे में फ्लैशलाइट की सुविधा नहीं है।','Could not switch the flashlight. Try again or continue without it.':'फ्लैशलाइट नहीं बदल पाई। फिर कोशिश करें या इसके बिना जारी रखें।'
 });
 
+Object.assign(hindi, {
+  'Product icon':'उत्पाद का आइकन','Choose a product icon':'उत्पाद का आइकन चुनें','Select product icon':'उत्पाद का आइकन चुनें','Package photo and scanner':'पैकेट की तस्वीर और स्कैनर','Open camera scanner':'कैमरा स्कैनर खोलें','Capture and scan label':'लेबल की तस्वीर लें और स्कैन करें','Close camera':'कैमरा बंद करें',
+  'Enable pop-up alerts and sound':'पॉप-अप सूचना और आवाज़ चालू करें','Enable notifications in browser':'ब्राउज़र में सूचनाएँ चालू करें','Notifications enabled':'सूचनाएँ चालू हैं','Sound with reminders':'रिमाइंडर के साथ आवाज़','Browser notifications are not supported here.':'इस ब्राउज़र में सूचनाओं की सुविधा नहीं है।','Allow notifications in browser settings, then try again.':'ब्राउज़र सेटिंग में सूचनाओं की अनुमति दें, फिर कोशिश करें।','Notifications are on. Keep ExpiCare open for reminders.':'सूचनाएँ चालू हैं। रिमाइंडर के लिए ExpiCare खुला रखें।','Pop-up reminders are checked while ExpiCare is open.':'ExpiCare खुला रहने पर पॉप-अप रिमाइंडर जाँचे जाते हैं।','Products are saved on this device; alerts do not sync to other devices yet.':'उत्पाद इसी डिवाइस में सेव हैं; सूचनाएँ अभी दूसरे डिवाइस से सिंक नहीं होतीं।','Notification permission is needed for pop-up alerts.':'पॉप-अप सूचनाओं के लिए ब्राउज़र की अनुमति चाहिए।','Expiry reminder':'एक्सपायरी रिमाइंडर','Expires today':'आज एक्सपायर होगा','Expires tomorrow':'कल एक्सपायर होगा','Expires in {days} days':'{days} दिनों में एक्सपायर होगा','Already expired':'पहले ही एक्सपायर हो चुका है','and {count} more':'और {count}'
+});
+
 const LanguageContext = createContext(null);
 
 export function LanguageProvider({ children }) {
