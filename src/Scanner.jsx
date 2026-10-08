@@ -254,13 +254,15 @@ export default function Scanner({ onBack, onSave }) {
   const capture = async () => {
     const video = videoRef.current;
     if (!video?.videoWidth) return setError('Camera is not ready yet. Try again in a moment.');
-    const scale = Math.min(1, 1400 / Math.max(video.videoWidth, video.videoHeight));
+    const scale = Math.min(1, 2000 / Math.max(video.videoWidth, video.videoHeight));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale);
     const context = canvas.getContext('2d');
     if (!context) return setError('Camera image could not be captured.');
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const image = canvas.toDataURL('image/jpeg', .82);
+    const image = canvas.toDataURL('image/jpeg', .9);
     setPhoto(image); setCamera('captured'); stopCamera(true); await recognize(image);
   };
 

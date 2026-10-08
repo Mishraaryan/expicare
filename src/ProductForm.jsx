@@ -7,7 +7,7 @@ export default function ProductForm({ product, close, save }) {
   const { language, t } = useTranslation();
   const [form, setForm] = useState(() => product ? { ...product } : {
     name: '', brand: '', barcode: '', category: 'Produce', quantity: '', location: '',
-    expiry: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10),
+    expiry: '',
     added: new Date().toISOString().slice(0, 10), emoji: '🥑', reminder: true, photo: ''
   });
   const [error, setError] = useState('');
@@ -63,9 +63,11 @@ export default function ProductForm({ product, close, save }) {
         if (file.size > 2e6) { setError(t('Image must be smaller than 2 MB.')); return; }
         const reader = new FileReader(); reader.onerror = () => setError(t('Could not read the image. Try another photo.'));
         reader.onload = () => { const image = new Image(); image.onerror = () => setError(t('Could not read the image. Try another photo.')); image.onload = () => {
-          const scale = Math.min(1, 900 / Math.max(image.width, image.height)); const canvas = document.createElement('canvas');
+          const scale = Math.min(1, 1400 / Math.max(image.width, image.height)); const canvas = document.createElement('canvas');
           canvas.width = Math.max(1, Math.round(image.width * scale)); canvas.height = Math.max(1, Math.round(image.height * scale));
-          canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height); set('photo', canvas.toDataURL('image/jpeg', .76)); setScanText(''); setError('');
+          const context = canvas.getContext('2d'); if (!context) { setError(t('Could not read the image. Try another photo.')); return; }
+          context.imageSmoothingEnabled = true; context.imageSmoothingQuality = 'high';
+          context.drawImage(image, 0, 0, canvas.width, canvas.height); set('photo', canvas.toDataURL('image/jpeg', .86)); setScanText(''); setError('');
         }; image.src = reader.result; }; reader.readAsDataURL(file);
       }}/></label>{form.photo && <button type="button" className="secondary scan-button" onClick={scanLabel} disabled={scanning}>{scanning ? <LoaderCircle className="spin" size={15}/> : <ScanText size={15}/>} {scanning ? `${progress}%` : t('Scan label')}</button>}</div>
         {form.photo && <img className="photo-preview" src={form.photo} alt={t('Package photo preview')}/>}

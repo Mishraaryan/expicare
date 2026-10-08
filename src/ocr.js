@@ -13,8 +13,10 @@ function isoDate(year, month, day) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function expiryFromLine(line) {
-  const value = line.replace(/[|]/g, '1').replace(/\s+/g, ' ').trim();
+function expiryFromLine(line, allowLooseFormats = false) {
+  const value = line.replace(/[|]/g, '1')
+    .replace(/[0-9OoIlL]+(?:\s*[./-]\s*[0-9OoIlL]+){1,2}/g, digits => digits.replace(/[Oo]/g, '0').replace(/[IlL]/g, '1'))
+    .replace(/\s*([./-])\s*/g, '$1').replace(/\s+/g, ' ').trim();
   let match = value.match(/\b(20\d{2})[./-](0?[1-9]|1[0-2])[./-](0?[1-9]|[12]\d|3[01])\b/);
   if (match) return isoDate(match[1], match[2], match[3]);
 
@@ -28,6 +30,24 @@ function expiryFromLine(line) {
   }
 
   const monthPattern = Object.keys(MONTHS).join('|');
+  if (allowLooseFormats) {
+    match = value.match(/\b(20\d{2})[./-](0?[1-9]|1[0-2])\b/);
+    if (match) return isoDate(match[1], match[2], new Date(Number(match[1]), Number(match[2]), 0).getDate());
+    match = value.match(/\b(0?[1-9]|[12]\d|3[01])\s+(0?[1-9]|1[0-2])\s+(20\d{2}|\d{2})\b/);
+    if (match) return isoDate(Number(match[3]) < 100 ? 2000 + Number(match[3]) : match[3], match[2], match[1]);
+    match = value.match(/\b(0?[1-9]|1[0-2])\s+(20\d{2}|\d{2})\b/);
+    if (match) {
+      const year = Number(match[2]) < 100 ? 2000 + Number(match[2]) : Number(match[2]);
+      return isoDate(year, match[1], new Date(year, Number(match[1]), 0).getDate());
+    }
+    match = value.match(new RegExp(`\\b(${monthPattern})[,. ]+((?:20)?\\d{2})\\b`, 'i'));
+    if (match) {
+      const year = Number(match[2]) < 100 ? 2000 + Number(match[2]) : Number(match[2]);
+      const month = MONTHS[match[1].toLowerCase()];
+      return isoDate(year, month, new Date(year, month, 0).getDate());
+    }
+  }
+
   match = value.match(new RegExp(`\\b(\\d{1,2})\\s*(${monthPattern})[,. ]+((?:20)?\\d{2})\\b`, 'i'));
   if (match) return isoDate(Number(match[3]) < 100 ? 2000 + Number(match[3]) : match[3], MONTHS[match[2].toLowerCase()], match[1]);
   match = value.match(new RegExp(`\\b(${monthPattern})\\s*(\\d{1,2})[,. ]+((?:20)?\\d{2})\\b`, 'i'));
@@ -40,7 +60,11 @@ export function extractProductDetails(rawText) {
   const isManufactureLine = line => /\b(mfg|mfd|manufactur(?:ed|ing)?|date of manufacture|packed (?:on|date)|pkd)\b/i.test(line);
   const hasExpiryMarker = line => /\b(exp(?:iry|iration)?(?:\s+date)?|use\s+(?:by|before)|best\s+(?:before|by)|bb(?:e)?|b\.b\.e)\b/i.test(line);
   const expiryLines = lines.filter(line => hasExpiryMarker(line) && !isManufactureLine(line));
-  let expiry = expiryLines.map(expiryFromLine).find(Boolean);
+  let expiry = expiryLines.map(line => expiryFromLine(line, true)).find(Boolean);
+  if (!expiry) {
+    const markerLine = lines.findIndex((line, index) => hasExpiryMarker(line) && !isManufactureLine(line) && index < lines.length - 1);
+    if (markerLine >= 0) expiry = expiryFromLine(`${lines[markerLine]} ${lines[markerLine + 1]}`, true);
+  }
   if (!expiry) {
     const dates = lines.filter(line => !isManufactureLine(line)).map(expiryFromLine).filter(Boolean);
     expiry = dates.find(date => date >= new Date().toISOString().slice(0, 10)) || dates[0] || '';
